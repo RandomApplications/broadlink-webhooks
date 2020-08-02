@@ -13,12 +13,12 @@ const seleniumChromeOptions = require('selenium-webdriver/chrome').Options;
 // The following requirements are included in Node.js:
 const homeDir = require('os').homedir();
 const path = require('path');
-const {existsSync, writeFileSync, mkdirSync} = require('fs');
+const {existsSync, readFileSync, writeFileSync, mkdirSync} = require('fs');
 const {exec, execSync, spawnSync} = require('child_process');
 
 
 // Adjustable Settings (but should not need to be adjusted unless something isn't working properly):
-const debugLogging = true;
+const debugLogging = false;
 
 const defaultBrowserWindowSize = {width: 690, height: 1000}; // Only used for Firefox and Chrome when not Headless (Safari window is not resizable).
 
@@ -64,7 +64,19 @@ let webDriver = null;
 let browserToAutomate = null;
 
 (async function broadlink_webhooks() {
-    console.info('\nbroadlink-webhooks: Create and Manage IFTTT Webhooks Applets for BroadLink\n')
+    console.info('\nbroadlink-webhooks: Create and Manage IFTTT Webhooks Applets for BroadLink');
+
+    try {
+        let versionFromPackageJson = JSON.parse(readFileSync(`${__dirname}/package.json`)).version;
+        if (versionFromPackageJson) {
+            console.info(`Version ${versionFromPackageJson}\n`);
+        } else {
+            throw 'NO VERSION KEY';
+        }
+    } catch (retrieveVersionErrr) {
+        console.info(''); // Just for a line break if version retrieval fails.
+    }
+    
     let userQuit = false;
     try {
         let lastIFTTTusernameUsed = null;
