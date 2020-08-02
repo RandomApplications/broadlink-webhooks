@@ -1,0 +1,47 @@
+{
+  "name": "broadlink-webhooks",
+  "version": "1.0.0",
+  "description": "Create and Manage IFTTT Webhooks Applets for BroadLink (Using Selenium WebDriver)",
+  "main": "broadlink-webhooks.js",
+  "bin": {
+    "broadlink-webhooks": "./broadlink-webhooks.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RandomApplications/broadlink-webhooks.git"
+  },
+  "keywords": [
+    "IFTTT",
+    "BroadLink",
+    "Webhooks",
+    "Applets",
+    "Devices",
+    "Outlets",
+    "Scenes",
+    "REST",
+    "API",
+    "URL",
+    "CURL",
+    "RF",
+    "Webhook",
+    "Maker",
+    "Applet",
+    "Device",
+    "Outlet",
+    "Scene"
+  ],
+  "dependencies": {
+    "selenium-webdriver": "^4.0.0-alpha.7",
+    "prompts": "^2.3.2",
+    "sanitize-filename": "^1.6.3"
+  },
+  "author": "RandomApplications",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/RandomApplications/broadlink-webhooks/issues"
+  },
+  "homepage": "https://github.com/RandomApplications/broadlink-webhooks#readme"
+}
