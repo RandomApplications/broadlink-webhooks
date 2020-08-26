@@ -104,10 +104,10 @@ let browserToAutomate = null;
 
             let initialBrowserChoiceSelection = 0;
             if (browserToAutomate) {
-                for (let thisBrowserChoiceIndex in browserPromptChoices) {
+                for (let thisBrowserChoiceIndex = 0; thisBrowserChoiceIndex < browserPromptChoices.length; thisBrowserChoiceIndex ++) {
                     let thisBrowserChoice = browserPromptChoices[thisBrowserChoiceIndex];
                     if (browserToAutomate == thisBrowserChoice.value) {
-                        initialBrowserChoiceSelection = parseInt(thisBrowserChoiceIndex);
+                        initialBrowserChoiceSelection = thisBrowserChoiceIndex;
                         break;
                     }
                 }
@@ -572,7 +572,7 @@ let browserToAutomate = null;
                 console.info(`\nIFTTT Webhooks Key: ${iftttWebhooksKey}`);
             }
 
-            let existingWebhooksBroadLinkAppletIDsAndNames = [];
+            let existingWebhooksBroadLinkAppletIDsAndNames = {};
             let allowedWebhooksBroadLinkAppletNamePrefixes = [];
             
             if ((optionsPromptsResponse.groupSelection == groupDevicesAndScenes) || (optionsPromptsResponse.groupSelection == groupDevicesOnly)) {
@@ -589,23 +589,24 @@ let browserToAutomate = null;
                     let existingWebhooksBroadLinkOnAppletsCount = 0;
                     let existingWebhooksBroadLinkOffAppletsCount = 0;
                     let existingWebhooksBroadLinkSceneAppletsCount = 0;
-                    existingWebhooksBroadLinkAppletIDsAndNames = [];
+                    existingWebhooksBroadLinkAppletIDsAndNames = {};
                     
                     await webDriver.get('https://ifttt.com/broadlink');
                     await check_for_server_error_page();
 
-                    // First, wait a long time for the "discover_services" section (which should always exist) or the "my_services" section (which will only exist if personal Applets exist) because one will always be present no matter what.
-                    await webDriver.wait(until.elementsLocated(By.xpath('//section[@class="discover_services" or @class="my_services"]')), longWaitForElementTime);
+                    // First, wait a long time for applets to exist within the "discover_services" section (which should always exist) or the "my_services" section (which will only exist if personal Applets exist) because one will always exist no matter what.
+                    // Note: Need to wait for "my-web-applet-card" because the "discover_services" section will exist early with an empty "my-applets" list while the page contents are still loading with a spinner displayed.
+                    await webDriver.wait(until.elementsLocated(By.xpath('//section[@class="discover_services" or @class="my_services"]/ul[contains(@class,"my-applets")]/li[contains(@class,"my-web-applet-card")]')), longWaitForElementTime);
 
                     // Next, once we know the page is loaded, wait a short time to get the "my_services" Applet titles (so that it will fail quickly if none exist).
                     try {
                         await webDriver.wait(
-                            until.elementsLocated(By.xpath('//section[@class="my_services"]/div/ul[contains(@class,"my-applets")]/li[contains(@class,"my-web-applet-card")]/a[contains(@class,"applet-card-body")]')), shortWaitForElementTime
+                            until.elementsLocated(By.xpath('//section[@class="my_services"]/ul[contains(@class,"my-applets")]/li[contains(@class,"my-web-applet-card")]/a[contains(@class,"applet-card-body")]')), shortWaitForElementTime
                         ).then(async theseElements => {
                             totalBroadLinkAppletsDetected = theseElements.length;
                             if (debugLogging) console.debug(`DEBUG - Detected ${totalBroadLinkAppletsDetected} Total BroadLink Applets - Filtering to Only Webhooks Applets for BroadLink`);
                             
-                            for (let thisElementIndex in theseElements) {
+                            for (let thisElementIndex = 0; thisElementIndex < theseElements.length; thisElementIndex ++) {
                                 try {
                                     let thisAppletWorksWithPermissionsElement = await theseElements[thisElementIndex].findElement(By.xpath('.//div[@class="meta"]/div[@class="works-with"]/ul[@class="permissions"]'));
                                     let thisAppletTriggerServiceName = await thisAppletWorksWithPermissionsElement.findElement(By.xpath('.//li[1]/img')).getAttribute('title');
@@ -615,17 +616,21 @@ let browserToAutomate = null;
                                         
                                         if (thisAppletActionServiceName == 'BroadLink') { // Since we're on https://ifttt.com/broadlink and the Trigger Service is Webhooks this is an unnecessary check, but better safe than sorry.
                                             let thisBroadLinkAppletName = await theseElements[thisElementIndex].findElement(By.xpath('.//div[contains(@class,"content")]/span[contains(@class,"title")]/span/div/div')).getText(); // "title" class had a space after it at the time of writing, which I don't trust to stay forever, so using contains instead of checking if equals "title ".
-                                            let thisBroadLinkAppletNameParts = thisBroadLinkAppletName.split('+');
                                             
-                                            if ((thisBroadLinkAppletNameParts.length == 2) && allowedWebhooksBroadLinkAppletNamePrefixes.includes(thisBroadLinkAppletNameParts[0]) && !/\s/g.test(thisBroadLinkAppletNameParts[1])) {
+                                            if (debugLogging) console.debug(`DEBUG - Found Webhooks/BroadLink Applet: ${thisBroadLinkAppletName}`);
+                                            
+                                            let thisBroadLinkAppletNameParts = thisBroadLinkAppletName.split('+');
+                                            let thisBroadLinkAppletNamePrefixPart = thisBroadLinkAppletNameParts[0];
+                                            
+                                            if ((thisBroadLinkAppletNameParts.length == 2) && allowedWebhooksBroadLinkAppletNamePrefixes.includes(thisBroadLinkAppletNamePrefixPart) && !/\s/g.test(thisBroadLinkAppletNameParts[1])) {
                                                 let thisAppletURL = await theseElements[thisElementIndex].getAttribute('href');
 
-                                                if (thisAppletURL.includes('/applets/') && thisAppletURL.includes('-webhooks-event-broadlink-')) {
-                                                    if (thisAppletURL.includes('-webhooks-event-broadlink-on-')) {
+                                                if (thisAppletURL.includes('/applets/')) {
+                                                    if (thisBroadLinkAppletNamePrefixPart.endsWith('-On')) {
                                                         existingWebhooksBroadLinkOnAppletsCount ++;
-                                                    } else if (thisAppletURL.includes('-webhooks-event-broadlink-off-')) {
+                                                    } else if (thisBroadLinkAppletNamePrefixPart.endsWith('-Off')) {
                                                         existingWebhooksBroadLinkOffAppletsCount ++;
-                                                    } else if (thisAppletURL.includes('-webhooks-event-broadlink-scene-')) {
+                                                    } else if (thisBroadLinkAppletNamePrefixPart.endsWith('-Scene')) {
                                                         existingWebhooksBroadLinkSceneAppletsCount ++;
                                                     }
 
@@ -640,7 +645,7 @@ let browserToAutomate = null;
                             }
                         });
                     } catch (getExistingBroadLinkAppletsError) {
-                        // Ignore error, it's ok if no BroadLink Applets already exist.
+                        if (debugLogging) console.debug(`DEBUG ERROR - FAILED TO GET ANY EXISTING APPLETS: ${getExistingBroadLinkAppletsError}`);
                     }
 
                     if (totalBroadLinkAppletsDetected == 0) {
@@ -715,7 +720,7 @@ let browserToAutomate = null;
                                 until.elementsLocated(By.xpath('//select[@name="fields[deviceinfo]"]/option')), longWaitForElementTime // Now get all the devices.
                             ).then(async theseElements => {
                                 if (debugLogging) console.debug('DEBUG - Retrieving BroadLink Device Names');
-                                for (let thisElementIndex in theseElements) {
+                                for (let thisElementIndex = 0; thisElementIndex < theseElements.length; thisElementIndex ++) {
                                     currentBroadLinkDeviceNamesArray.push(await theseElements[thisElementIndex].getText());
                                 }
                             });
@@ -785,7 +790,7 @@ let browserToAutomate = null;
                                 until.elementsLocated(By.xpath('//select[@name="fields[deviceinfo]"]/option')), longWaitForElementTime // Now get all the scenes.
                             ).then(async theseElements => {
                                 if (debugLogging) console.debug('DEBUG - Retrieving BroadLink Scene Names');
-                                for (let thisElementIndex in theseElements) {
+                                for (let thisElementIndex = 0; thisElementIndex < theseElements.length; thisElementIndex ++) {
                                     currentBroadLinkSceneNamesArray.push(await theseElements[thisElementIndex].getText());
                                 }
                             });
@@ -828,24 +833,24 @@ let browserToAutomate = null;
             if (optionsPromptsResponse.taskSelection == taskCreateApplets) {
                 let currentBroadLinkDevicesAndScenesArrays = [currentBroadLinkDeviceNamesArray, currentBroadLinkSceneNamesArray];
 
-                for (let thisArrayIndex in currentBroadLinkDevicesAndScenesArrays) {
+                for (let thisArrayIndex = 0; thisArrayIndex < currentBroadLinkDevicesAndScenesArrays.length; thisArrayIndex ++) {
                     let thisDevicesOrScenesArray = currentBroadLinkDevicesAndScenesArrays[thisArrayIndex];
                     let isScene = (thisArrayIndex == 1);
                     
                     if (thisDevicesOrScenesArray.length > 0) console.info(`\n\nCreating Webhooks Applet${((thisDevicesOrScenesArray.length == 1) ? '' : 's')} for ${thisDevicesOrScenesArray.length} BroadLink ${isScene ? 'scene' : 'device'}${((thisDevicesOrScenesArray.length == 1) ? '' : 's')}...`);
 
-                    for (let thisDeviceOrSceneIndex in thisDevicesOrScenesArray) {
+                    for (let thisDeviceOrSceneIndex = 0; thisDeviceOrSceneIndex < thisDevicesOrScenesArray.length; thisDeviceOrSceneIndex ++) {
                         let thisDevicOrSceneName = thisDevicesOrScenesArray[thisDeviceOrSceneIndex];
                         
                         let statesArray = (isScene ? ['Scene'] : ['On', 'Off']);
-                        for (let thisStateIndex in statesArray) {
+                        for (let thisStateIndex = 0; thisStateIndex < statesArray.length; thisStateIndex ++) {
                             let thisStateName = statesArray[thisStateIndex];
 
                             if (isScene) {
-                                console.info(`\nSCENE ${parseInt(thisDeviceOrSceneIndex) + 1} OF ${thisDevicesOrScenesArray.length}`);
+                                console.info(`\nSCENE ${thisDeviceOrSceneIndex + 1} OF ${thisDevicesOrScenesArray.length}`);
                                 console.info(`\tScene Name: ${thisDevicOrSceneName}`);
                             } else {
-                                console.info(`\nDEVICE ${parseInt(thisDeviceOrSceneIndex) + 1} OF ${thisDevicesOrScenesArray.length} - ${thisStateName} STATE`);
+                                console.info(`\nDEVICE ${thisDeviceOrSceneIndex + 1} OF ${thisDevicesOrScenesArray.length} - ${thisStateName} STATE`);
                                 console.info(`\tDevice Name: ${thisDevicOrSceneName}`);
                             }
 
@@ -1112,13 +1117,13 @@ let browserToAutomate = null;
                                     ).then(async thisElement => {
                                         if ((await thisElement.getAttribute('value')) == 'Save') {
                                             try {
-                                                // Don't wait very long since Save button already exists and Delete button may not exist at all.
-                                                // The Delete button should only not exist when visiting an Edit Applet URL which has already been deleted.
+                                                // Don't wait very long since Save button already exists and Archive button may not exist at all.
+                                                // The Archive button should only not exist when visiting an Edit Applet URL which has already been deleted.
                                                 // But, that should not really be possible since this code is getting the Edit Applet URLs from what is currently in IFTTT.
                                                 // This setup it left over from when this code got the Edit Applet URLs from a file, which weren't guaranteed to not already have been deleted.
                                                 // Kept this setup in place to be extra safe, since it could still happen if someone deletes an Applet manually after this delete process was started.
                                                 await webDriver.wait(
-                                                    until.elementLocated(By.linkText('Delete')), shortWaitForElementTime
+                                                    until.elementLocated(By.linkText('Archive')), shortWaitForElementTime
                                                 ).then(async thatElement => {
                                                     if (browserToAutomate == 'safari') {
                                                         await webDriver.executeScript('arguments[0].click()', thatElement); // Neither sendKeys(Key.ENTER) nor Selenium click() works here in Safari.
@@ -1137,7 +1142,7 @@ let browserToAutomate = null;
                                                     console.info(`${thisAppletIndex} - Deleted Webhooks Applet for ${isScene ? 'Scene' : 'Device'}: ${thisEditAppletURL} (${thisAppletName})`);
                                                 });
                                             } catch (noDeleteButtonError) {
-                                                console.info(`${thisAppletIndex} - Webhooks Applet for ${isScene ? 'Scene' : 'Device'} Already Deleted - NO DELETE BUTTON: ${thisEditAppletURL} (${thisAppletName})`);
+                                                console.info(`${thisAppletIndex} - Webhooks Applet for ${isScene ? 'Scene' : 'Device'} Already Deleted - NO ARCHIVE BUTTON: ${thisEditAppletURL} (${thisAppletName})`);
                                             }
                                         } else {
                                             console.info(`${thisAppletIndex} - Webhooks Applet for ${isScene ? 'Scene' : 'Device'} Already Deleted - DOES NOT EXIST: ${thisEditAppletURL} (${thisAppletName})`);
@@ -1176,7 +1181,7 @@ let browserToAutomate = null;
 
                 let homebridgeIftttConfigAccessoriesArray = [];
                 
-                for (let thisAppletNameIndex in existingWebhooksBroadLinkAppletNames) {
+                for (let thisAppletNameIndex = 0; thisAppletNameIndex < existingWebhooksBroadLinkAppletNames.length; thisAppletNameIndex ++) {
                     let thisAppletName = existingWebhooksBroadLinkAppletNames[thisAppletNameIndex];
                     let isScene = thisAppletName.startsWith('Webhooks Event: BroadLink-Scene+');
                     
@@ -1259,7 +1264,7 @@ let browserToAutomate = null;
             } else if (optionsPromptsResponse.taskSelection == taskGenerateHomebridgeHTTPconfig) {
                 let homebridgeHttpConfigAccessoriesArray = [];
                 
-                for (let thisAppletNameIndex in existingWebhooksBroadLinkAppletNames) {
+                for (let thisAppletNameIndex = 0; thisAppletNameIndex < existingWebhooksBroadLinkAppletNames.length; thisAppletNameIndex ++) {
                     let thisAppletName = existingWebhooksBroadLinkAppletNames[thisAppletNameIndex];
                     let isScene = thisAppletName.startsWith('Webhooks Event: BroadLink-Scene+');
                     
@@ -1484,7 +1489,7 @@ let browserToAutomate = null;
             }
             
             let openFolderPromptChoices = ["Don't Open a Folder"];
-            for (let thisInstallFolderIndex in installFolderPaths) {
+            for (let thisInstallFolderIndex = 0; thisInstallFolderIndex < installFolderPaths.length; thisInstallFolderIndex ++) {
                 let thisInstallFolderPath = installFolderPaths[thisInstallFolderIndex];
                 openFolderPromptChoices.push({title: `Open "${thisInstallFolderPath}"`, value: thisInstallFolderPath});
             }
@@ -1673,7 +1678,7 @@ async function click_button_until_sid_incremented(buttonName, buttonLocatedBy, c
             [] // Don't bother trying to remove anything on any other pages to save time.
         )
     );
-    for (let thisElementToRemoveByIndex in elementsToRemoveBy) {
+    for (let thisElementToRemoveByIndex = 0; thisElementToRemoveByIndex < elementsToRemoveBy.length; thisElementToRemoveByIndex ++) {
         try {
             await webDriver.wait(
                 until.elementLocated(elementsToRemoveBy[thisElementToRemoveByIndex]), shortWaitForElementTime
