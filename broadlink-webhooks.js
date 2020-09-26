@@ -55,11 +55,6 @@ const groupScenesOnly = 'Scenes Only';
 const optionChange = 'change';
 const optionQuit = 'quit';
 
-// Values for different click methods:
-const clickMethodSelenium = 0;
-const clickMethodEnter = 1; // Try if clickMethodSelenium doesn't work for a button (really only an issue in Safari).
-const clickMethodJS = 2; // Try if neither clickMethodSelenium nor clickMethodEnter works for a button (really only an issue in Safari).
-
 
 let webDriver = null;
 let browserToAutomate = null;
@@ -395,12 +390,12 @@ let browserToAutomate = null;
 
                             let currentURL = await webDriver.getCurrentUrl();
                             
-                            // IFTTT will first redirect to "https://ifttt.com/session" and then finally to "https://ifttt.com/" OR "https://ifttt.com/my_applets" (depending on user settings) after successfully logging in.
-                            while ((currentURL != 'https://ifttt.com/') && (currentURL != 'https://ifttt.com/my_applets')) {
+                            // IFTTT will first redirect to "https://ifttt.com/session" and then finally to "https://ifttt.com/home" after successfully logging in.
+                            while (currentURL != 'https://ifttt.com/home') {
                                 if (currentURL == iftttSignInURL) {
                                     try {
                                         await webDriver.wait(
-                                            until.elementLocated(By.xpath('//input[@value="Sign in"]')), shortWaitForElementTime
+                                            until.elementLocated(By.xpath('//input[@value="Sign in" or @value="Signing in..."]')), shortWaitForElementTime
                                         ).then(async thisElement => {
                                             if (debugLogging) console.debug('DEBUG - Clicking Sign In Button');
                                             try {
@@ -438,7 +433,7 @@ let browserToAutomate = null;
                                         });
 
                                         await webDriver.wait(
-                                            until.elementLocated(By.xpath('//input[@value="Sign in"]')), shortWaitForElementTime
+                                            until.elementLocated(By.xpath('//input[@value="Sign in" or @value="Signing in..."]')), shortWaitForElementTime
                                         ).then(async thisElement => {
                                             if (debugLogging) console.debug('DEBUG - Clicking Two-Step Sign In Button');
                                             try {
@@ -488,7 +483,7 @@ let browserToAutomate = null;
                             await webDriver.get(iftttSignInURL);
                             let currentURL = await webDriver.getCurrentUrl();
 
-                            if ((currentURL == 'https://ifttt.com/') || (currentURL == 'https://ifttt.com/my_applets')) {
+                            if (currentURL == 'https://ifttt.com/home') {
                                 lastIFTTTusernameUsed = 'signedInManuallyViaWebBrowser';
                                 lastIFTTTpasswordUsed = null;
 
@@ -595,13 +590,13 @@ let browserToAutomate = null;
                     await check_for_server_error_page();
 
                     // First, wait a long time for applets to exist within the "discover_services" section (which should always exist) or the "my_services" section (which will only exist if personal Applets exist) because one will always exist no matter what.
-                    // Note: Need to wait for "my-web-applet-card" because the "discover_services" section will exist early with an empty "my-applets" list while the page contents are still loading with a spinner displayed.
-                    await webDriver.wait(until.elementsLocated(By.xpath('//section[@class="discover_services" or @class="my_services"]/ul[contains(@class,"my-applets")]/li[contains(@class,"my-web-applet-card")]')), longWaitForElementTime);
+                    // Note: Need to wait for "my-web-applet-card" because the "discover_services" section will exist early with an empty "web-applet-cards" list while the page contents are still loading with a spinner displayed.
+                    await webDriver.wait(until.elementsLocated(By.xpath('//section[@class="discover_services" or @class="my_services"]/ul[@class="web-applet-cards"]/li[contains(@class,"my-web-applet-card")]')), longWaitForElementTime);
 
                     // Next, once we know the page is loaded, wait a short time to get the "my_services" Applet titles (so that it will fail quickly if none exist).
                     try {
                         await webDriver.wait(
-                            until.elementsLocated(By.xpath('//section[@class="my_services"]/ul[contains(@class,"my-applets")]/li[contains(@class,"my-web-applet-card")]/a[contains(@class,"applet-card-body")]')), shortWaitForElementTime
+                            until.elementsLocated(By.xpath('//section[@class="my_services"]/ul[@class="web-applet-cards"]/li[contains(@class,"my-web-applet-card")]/a[contains(@class,"applet-card-body")]')), shortWaitForElementTime
                         ).then(async theseElements => {
                             totalBroadLinkAppletsDetected = theseElements.length;
                             if (debugLogging) console.debug(`DEBUG - Detected ${totalBroadLinkAppletsDetected} Total BroadLink Applets - Filtering to Only Webhooks Applets for BroadLink`);
@@ -735,12 +730,9 @@ let browserToAutomate = null;
                             console.info(`\n${currentBroadLinkDeviceNamesArray.length} BroadLink Device${((currentBroadLinkDeviceNamesArray.length == 1) ? '' : 's')} Detected`);
                             
                             if (optionsPromptsResponse.groupSelection != groupDevicesOnly) {
-                                let currentURL = await webDriver.getCurrentUrl();
-                                let nextExpectedSID = (currentURL.includes('sid=') ? (parseInt(currentURL.split('sid=')[1]) + 1) : 0);
-                                
                                 // Do not keep clicking the "Back" button until the correct URL is loaded (like we do with other submits) so that we don't accidentally go back multiple pages.
                                 await webDriver.wait(
-                                    until.elementLocated(By.xpath('//div[contains(@class,"ifttt-back-button")]/a')), longWaitForElementTime
+                                    until.elementLocated(By.xpath('//a[@title="Back"]')), longWaitForElementTime
                                 ).then(async thisElement => {
                                     if (debugLogging) console.debug('DEBUG - Clicking Back Button');
                                     if (browserToAutomate == 'safari') {
@@ -750,9 +742,10 @@ let browserToAutomate = null;
                                     }
                                 });
 
-                                let nextExpectedURL = `https://ifttt.com/create/if-receive-a-web-request-then-broadlink?sid=${nextExpectedSID}`;
+                                let currentURL = await webDriver.getCurrentUrl();
+                                let nextExpectedURL = 'https://ifttt.com/create/if-receive-a-web-request-then-broadlink';
                                 if (debugLogging) console.debug(`\nDEBUG - Waiting for URL: ${nextExpectedURL}`);
-                                while ((currentURL.includes('sid=') ? parseInt(currentURL.split('sid=')[1]) : -1) < nextExpectedSID) {
+                                while (currentURL != nextExpectedURL) {
                                     currentURL = await webDriver.getCurrentUrl();
                             
                                     if (currentURL.startsWith('https://ifttt.com/create/connect-')) {
@@ -766,16 +759,15 @@ let browserToAutomate = null;
                                     if (nextExpectedURL != currentURL) console.warn('DEBUG WARNING - EXIT URL DID NOT EQUAL EXPECTED URL\n');
                                 }
                                 
-                                await webDriver.wait(until.elementLocated(By.xpath('//h2[text()="Choose action"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+                                await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Choose an action"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
                                 
-                                await click_button_until_sid_incremented(
+                                await click_button_until_next_url(
                                     'Scene Control Action',
-                                    By.xpath('//span[text()="Scene control"]/parent::li'),
-                                    ((browserToAutomate == 'safari') ? clickMethodJS : clickMethodSelenium),
+                                    By.xpath('//a[@title="Choose action: Scene control"]'),
                                     'https://ifttt.com/create/if-receive-a-web-request-then-scene-control'
                                 );
 
-                                await webDriver.wait(until.elementLocated(By.xpath('//h2[text()="Complete action fields"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+                                await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Complete action fields"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
                             }
                         } else {
                             console.info('\nCHOSE NOT TO DETECT DEVICES IN BROADLINK');
@@ -809,8 +801,8 @@ let browserToAutomate = null;
                         
                         break;
                     } catch (retrieveDevicesAndScenesError) {
-                        if (retrieveDevicesAndScenesError.toString().endsWith('NOT CONNECTED IN IFTTT')) {
-                            throw retrieveDevicesAndScenesError; // Don't keep trying if service isn't connected.
+                        if (retrieveDevicesAndScenesError.toString().endsWith('NOT CONNECTED IN IFTTT') || retrieveDevicesAndScenesError.toString().startsWith('MAXIMUM ALLOWED APPLETS CREATED')) {
+                            throw retrieveDevicesAndScenesError; // Don't keep trying if service isn't connected or maximum allowed Applets created (IFTTT Pro required).
                         }
 
                         console.error(`\nERROR: ${retrieveDevicesAndScenesError}`);
@@ -887,19 +879,26 @@ let browserToAutomate = null;
                                         });
                                     }
                                     
-                                    await click_button_until_sid_incremented(
+                                    await click_button_until_next_url(
                                         'Create Action',
-                                        By.xpath('//input[@value="Create action"]'),
-                                        ((browserToAutomate == 'safari') ? clickMethodEnter : clickMethodSelenium),
+                                        By.xpath('//input[@value="Create action" or @value="Creating action..."]'),
                                         `https://ifttt.com/create/if-receive-a-web-request-then-${isScene ? 'scene-control' : 'turn-device-on-or-off'}`
                                     );
                                     
-                                    await webDriver.wait(until.elementLocated(By.xpath('//h2[text()="Review and finish"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+                                    await webDriver.wait(until.elementLocated(By.xpath(`//span[text()="${isScene ? 'Scene control' : 'Turn device on or off'}"]`)), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+                                    
+                                    await click_button_until_next_url(
+                                        'Continue',
+                                        By.xpath('//button[text()="Continue"]'),
+                                        `https://ifttt.com/create/if-receive-a-web-request-then-${isScene ? 'scene-control' : 'turn-device-on-or-off'}-preview`
+                                    );
+
+                                    await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Review and finish"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
                                     
                                     let originalAppletTitle = 'FAILED_TO_RETRIEVE_ORIGINAL_APPLET_TITLE';
 
                                     await webDriver.wait(
-                                        until.elementLocated(By.tagName('textarea')), longWaitForElementTime
+                                        until.elementLocated(By.xpath('//textarea[@name="description"]')), longWaitForElementTime
                                     ).then(async thisElement => {
                                         originalAppletTitle = await thisElement.getText();
                                         
@@ -915,29 +914,14 @@ let browserToAutomate = null;
                                         
                                         console.info(`\tOriginal Applet Title: ${originalAppletTitle}`);
                                     });
-                                    
-                                    try {
-                                        // Seen that this can error, but the next check that notifications are actually disabled can still pass. So just log the error and continue. If they're really not disabled the next check will error out.
-                                        await webDriver.wait(
-                                            until.elementLocated(By.xpath('//div[@class="switch-ui "]/parent::div[@class="switch"]/parent::div[@class="notification"]')), longWaitForElementTime // Disable notifications when Applet runs.
-                                        ).then(async thisElement => {
-                                            if (debugLogging) console.debug('DEBUG - Clicking Disable Notification Toggle');
-                                            if (browserToAutomate == 'safari') {
-                                                await webDriver.executeScript('arguments[0].click()', thisElement); // Neither Selenium click() nor sendKeys(Key.ENTER) works for this button in Safari.
-                                            } else {
-                                                await thisElement.click();
-                                            }
-                                        });
-                                    } catch (disableNotificationError) {
-                                        console.error('\nERROR CLICKING DISABLE NOTIFICATIONS TOGGLE - BUT IF APPLET CREATION CONTINUES, NOTIFICATIONS ACTUALLY ARE DISABLED\n');
-                                    }
-                                    
-                                    await webDriver.wait(until.elementLocated(By.xpath('//div[@class="notification"]/div[@class="switch"]/div[@class="switch-ui disabled"]')), longWaitForElementTime); // Make sure notifications when Applet runs got disabled.
+                                     
+                                    // Applets notifications are disabled by default now, but still check just in case.
+                                    await webDriver.wait(until.elementLocated(By.xpath('//div[contains(@class,"preview__notification")]/div[@class="switch"]/div[@class="switch-ui disabled"]')), longWaitForElementTime);
                                     
                                     break;
                                 } catch (appletSetupError) {
-                                    if (appletSetupError.toString().endsWith('NOT CONNECTED IN IFTTT')) {
-                                        throw appletSetupError; // Don't keep trying if service isn't connected.
+                                    if (appletSetupError.toString().endsWith('NOT CONNECTED IN IFTTT') || appletSetupError.toString().startsWith('MAXIMUM ALLOWED APPLETS CREATED')) {
+                                        throw appletSetupError; // Don't keep trying if service isn't connected or maximum allowed Applets created (IFTTT Pro required).
                                     }
 
                                     console.error(`\nERROR: ${appletSetupError}`);
@@ -965,7 +949,7 @@ let browserToAutomate = null;
                                     
                                     if (!currentURL.startsWith('https://ifttt.com/applets/')) {
                                         await webDriver.wait(
-                                            until.elementLocated(By.xpath('//input[@value="Finish"]')), longWaitForElementTime
+                                            until.elementLocated(By.xpath('//button[text()="Finish"]')), longWaitForElementTime
                                         ).then(async thisElement => {
                                             if (debugLogging) console.debug('DEBUG - Clicking Finish Applet Button');
                                             if (browserToAutomate == 'safari') {
@@ -981,7 +965,7 @@ let browserToAutomate = null;
 
                                         while (!currentURL.startsWith('https://ifttt.com/applets/')) {
                                             try {
-                                                await webDriver.wait(until.elementLocated(By.xpath('//input[@value="Finish"]')), shortWaitForElementTime);
+                                                await webDriver.wait(until.elementLocated(By.xpath('//button[text()="Finish" or text()="Finishing..."]')), shortWaitForElementTime);
 
                                                 finishButtonExistsCount ++;
 
@@ -1027,7 +1011,7 @@ let browserToAutomate = null;
                                             
                                             try {
                                                 await webDriver.wait(
-                                                    until.elementLocated(By.xpath('//h1[@class="connection-title"]')), ((failedToRetrieveFinalAppletTitleCount == 0) ? longWaitForElementTime : shortWaitForElementTime)
+                                                    until.elementLocated(By.css('h1.connection-title')), ((failedToRetrieveFinalAppletTitleCount == 0) ? longWaitForElementTime : shortWaitForElementTime)
                                                 ).then(async thisElement => {
                                                     if (debugLogging) console.debug('DEBUG - Got Final Applet Title Element');
                                                     finalAppletTitle = await thisElement.getText();
@@ -1134,7 +1118,7 @@ let browserToAutomate = null;
                                                     await webDriver.switchTo().alert().accept();
                                                     
                                                     let currentURL = await webDriver.getCurrentUrl();
-                                                    while ((currentURL != 'https://ifttt.com/') && (currentURL != 'https://ifttt.com/my_applets')) {
+                                                    while (currentURL != 'https://ifttt.com/home') {
                                                         currentURL = await webDriver.getCurrentUrl();
                                                         await webDriver.sleep(waitForCorrectUrlSleepInLoopTime);
                                                     }
@@ -1541,19 +1525,27 @@ let browserToAutomate = null;
 })();
 
 async function setup_ifttt_webhooks_broadlink_applet(thisWebhooksEventName, isScene) {
-    await webDriver.get('https://ifttt.com/create');
+    await webDriver.get('https://ifttt.com/create/');
     await check_for_server_error_page();
 
     await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Create your own"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
     
-    await click_button_until_sid_incremented(
-        'THIS',
-        By.className('this-that'),
-        clickMethodSelenium,
+    // Make sure maximum number of allowed Applets haven't been created before continuing.
+    await webDriver.wait(
+        until.elementLocated(By.xpath('//button[text()="Add"]')), longWaitForElementTime
+    ).then(async thisElement => {
+        if (await thisElement.getCssValue('display') == 'none') { // IFTTT Pro required if "Add" button is hidden.
+            throw 'MAXIMUM ALLOWED APPLETS CREATED\n\nPLEASE NOTE: IFTTT PRO REQUIRED TO DETECT BROADLINK DEVICES OR SCENES AND TO CREATE ANYMORE APPLETS';
+        }
+    });
+    
+    await click_button_until_next_url(
+        'If This',
+        By.xpath('//button[text()="Add"]'),
         'https://ifttt.com/create/if'
     );
     
-    await webDriver.wait(until.elementLocated(By.xpath('//h2[text()="Choose a service"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+    await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Choose a service"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
     
     await webDriver.wait(
         until.elementLocated(By.id('search')), longWaitForElementTime
@@ -1563,26 +1555,24 @@ async function setup_ifttt_webhooks_broadlink_applet(thisWebhooksEventName, isSc
         await thisElement.sendKeys('Webhooks');
     });
     
-    await click_button_until_sid_incremented(
+    await click_button_until_next_url(
         'Webhooks Service',
         By.linkText('Webhooks'),
-        clickMethodSelenium,
-        'https://ifttt.com/create/if-maker_webhooks'
+        'https://ifttt.com/create/if-maker-webhooks'
     );
     
-    await webDriver.wait(until.elementLocated(By.xpath('//h2[text()="Choose trigger"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+    await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Choose a trigger"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
     
-    await click_button_until_sid_incremented(
+    await click_button_until_next_url(
         'Receive a Web Request Trigger',
-        By.xpath('//span[text()="Receive a web request"]/parent::li'),
-        ((browserToAutomate == 'safari') ? clickMethodJS : clickMethodSelenium),
+        By.xpath('//a[@title="Choose trigger: Receive a web request"]'),
         'https://ifttt.com/create/if-receive-a-web-request'
     );
     
-    await webDriver.wait(until.elementLocated(By.xpath('//h2[text()="Complete trigger fields"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+    await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Complete trigger fields"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
     
     await webDriver.wait(
-        until.elementLocated(By.tagName('textarea')), longWaitForElementTime
+        until.elementLocated(By.xpath('//textarea[@name="fields[event]"]')), longWaitForElementTime
     ).then(async thisElement => {
         if (debugLogging) console.debug(`DEBUG - Entering "${thisWebhooksEventName}" into Webhooks Event Name Field`);
         await thisElement.clear();
@@ -1593,23 +1583,21 @@ async function setup_ifttt_webhooks_broadlink_applet(thisWebhooksEventName, isSc
         }
     });
 
-    await click_button_until_sid_incremented(
+    await click_button_until_next_url(
         'Create Trigger',
-        By.xpath('//input[@value="Create trigger"]'),
-        ((browserToAutomate == 'safari') ? clickMethodEnter : clickMethodSelenium),
-        'https://ifttt.com/create/if-receive-a-web-request-then'
+        By.xpath('//input[@value="Create trigger" or @value="Creating trigger..."]'),
+        'https://ifttt.com/create/if-receive-a-web-request'
     );
     
-    await webDriver.wait(until.elementLocated(By.xpath('//div[@class="if-this-then-that"]/div[@class="subelement"]/span[@class="logo"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+    await webDriver.wait(until.elementLocated(By.xpath('//span[text()="Receive a web request"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
     
-    await click_button_until_sid_incremented(
-        'THAT',
-        By.className('this-that'),
-        ((browserToAutomate == 'safari') ? clickMethodEnter : clickMethodSelenium),
+    await click_button_until_next_url(
+        'Then That',
+        By.xpath('//section[contains(@class,"then-that")]/button[text()="Add"]'),
         'https://ifttt.com/create/if-receive-a-web-request-then'
     );
 
-    await webDriver.wait(until.elementLocated(By.xpath('//h2[text()="Choose action service"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+    await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Choose a service"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
     
     await webDriver.wait(
         until.elementLocated(By.id('search')), longWaitForElementTime
@@ -1619,37 +1607,33 @@ async function setup_ifttt_webhooks_broadlink_applet(thisWebhooksEventName, isSc
         await thisElement.sendKeys('BroadLink');
     });
     
-    await click_button_until_sid_incremented(
+    await click_button_until_next_url(
         'BroadLink Service',
         By.linkText('BroadLink'),
-        ((browserToAutomate == 'safari') ? clickMethodJS : clickMethodSelenium),
         'https://ifttt.com/create/if-receive-a-web-request-then-broadlink'
     );
 
-    await webDriver.wait(until.elementLocated(By.xpath('//h2[text()="Choose action"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+    await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Choose an action"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
     
     if (isScene) {
-        await click_button_until_sid_incremented(
+        await click_button_until_next_url(
             'Scene Control Action',
-            By.xpath('//span[text()="Scene control"]/parent::li'),
-            ((browserToAutomate == 'safari') ? clickMethodJS : clickMethodSelenium),
+            By.xpath('//a[@title="Choose action: Scene control"]'),
             'https://ifttt.com/create/if-receive-a-web-request-then-scene-control'
         );
     } else {
-        await click_button_until_sid_incremented(
+        await click_button_until_next_url(
             'Turn Device On or Off Action',
-            By.xpath('//span[text()="Turn device on or off"]/parent::li'),
-            clickMethodSelenium,
+            By.xpath('//a[@title="Choose action: Turn device on or off"]'),
             'https://ifttt.com/create/if-receive-a-web-request-then-turn-device-on-or-off'
         );
     }
 
-    await webDriver.wait(until.elementLocated(By.xpath('//h2[text()="Complete action fields"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+    await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Complete action fields"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
 }
 
-async function click_button_until_sid_incremented(buttonName, buttonLocatedBy, clickMethod, nextExpectedURLprefix) {
+async function click_button_until_next_url(buttonName, buttonLocatedBy, nextExpectedURL) {
     // The "buttonName" argument is only important to know whether this is a "Service" page to confirm that it is connected in IFTTT. Otherwise only used for debugging.
-    // The "nextExpectedURLprefix" argument is not used for any actual functionality at all (only the URLs "sid" matters) and is only kept around for debugging and sanity checking if things change with IFTTT in the future.
 
     // Properly handing IFTTT's AJAX page reloads during Applet creation turned out to be a pretty troublesome...
     // Waiting for the next correct URL after clicking a button seems to be a reliable way to ensure that IFTTT's AJAX pages are fully loaded.
@@ -1660,51 +1644,14 @@ async function click_button_until_sid_incremented(buttonName, buttonLocatedBy, c
     // Basically, just keep clicking the button as long as it exists and until we get the URL we want.
     // BUT STILL, sometimes the URL just doesn't get updated properly, so if the button has been clicked a bunch (maxButtonClicksWithIncorrectUrl), or if it hasn't existed for a long time (maxIterationsWithIncorrectUrlAfterButtonNoLongerExists), allow the loop to exit with the wrong URL.
     
-    // Some page URLs do not change except for the "sid" being incremented.
-    // So, instead of waiting for whole URLs, just wait until the URL has the next expected "sid" (or a greater "sid" since sometimes it's higher than expected, maybe because of the way this code keeps clicking buttons to avoid some potentials hangs).
-    // Also, only waiting for the "sid" instead of the whole URL can avoid some hanging issues when the "sid" is updated correctly as expected but the rest of the URL is not updated as expected for some reason.
-    // For the rare cases where the "sid" is also never updated correctly, but the next page did actually load, the loop will exit with the incorrect URL after the previous page button hasn't existed for a long time as mentioned in the previous comment block.
-    
-    // Also, remove "footer" tag before trying to click any button because is seems that the "Careers" link can occasionally get clicked.
-    // This may happen from a button getting clicked right when the page is being rebuilt and elements are getting moved around.
-    // So, remove the footer completely (as well as any other buttons that show up below the ones we want to click) to try to avoid this kind of issue.
-    
     let currentURL = await webDriver.getCurrentUrl();
-
-    let elementsToRemoveBy = ((currentURL == 'https://ifttt.com/create') ?
-        [By.className('diy-footer'), By.tagName('footer')] : // Only need to try to remove these two on the initial create Applet page since they will then stay removed throughout Applet creation.
-        (currentURL.startsWith('https://ifttt.com/create/if-maker_webhooks?') || currentURL.startsWith('https://ifttt.com/create/if-receive-a-web-request-then-broadlink?') ?
-            [By.xpath('//div[contains(@class,"platform-suggestion__platform-suggestion")]')] : // This one will get created on these two specified pages during Applet creation.
-            [] // Don't bother trying to remove anything on any other pages to save time.
-        )
-    );
-    for (let thisElementToRemoveByIndex = 0; thisElementToRemoveByIndex < elementsToRemoveBy.length; thisElementToRemoveByIndex ++) {
-        try {
-            await webDriver.wait(
-                until.elementLocated(elementsToRemoveBy[thisElementToRemoveByIndex]), shortWaitForElementTime
-            ).then(async thisElement => {
-                try {
-                    if (debugLogging) console.debug(`DEBUG - Removing Bottom of Page Element with "${await thisElement.getAttribute('className')}" Class on ${currentURL}`);
-
-                    await webDriver.executeScript('arguments[0].remove()', thisElement);
-                } catch (innerRemoveFooterError) {
-                    // Ignore any stale element error.
-                }
-            });
-        } catch (outerRemoveFooterError) {
-            // Ignore likely error from element not existing on this page or from having already been removed.
-        }
-    }
-
-    let nextExpectedSID = (currentURL.includes('sid=') ? (parseInt(currentURL.split('sid=')[1]) + 1) : 0);
-    let nextExpectedURL = `${nextExpectedURLprefix}?sid=${nextExpectedSID}`;
-
+    
     let buttonClickCount = 0;
     let buttonNoLongerExistsCount = 0;
     
     if (debugLogging) console.debug(`\nDEBUG - Waiting for URL: ${nextExpectedURL}`);
 
-    while (((currentURL.includes('sid=') ? parseInt(currentURL.split('sid=')[1]) : -1) < nextExpectedSID) || (buttonNoLongerExistsCount == 0)) {
+    while ((currentURL != nextExpectedURL) || (buttonNoLongerExistsCount == 0)) {
         try {
             await webDriver.wait(
                 until.elementLocated(buttonLocatedBy), shortWaitForElementTime
@@ -1712,22 +1659,16 @@ async function click_button_until_sid_incremented(buttonName, buttonLocatedBy, c
                 if ((buttonClickCount == 0) || (buttonNoLongerExistsCount == 0)) { // Only click if not clicked before or button has never NOT existed (preventing clicking if button re-appears after disappearing, which I've seen happen).
                     if (debugLogging) {
                         let thisElementText = await thisElement.getText();
-                        console.debug(`DEBUG - Clicking ${buttonName} Button [text="${thisElementText.split('\n')[(thisElementText.startsWith('✚\n') ? 1 : 0)]}", value="${await thisElement.getAttribute('value')}"] (${buttonClickCount + 1}) - SID=${parseInt(currentURL.split('sid=')[1])}`);
-                        if ((currentURL.includes('sid=') ? parseInt(currentURL.split('sid=')[1]) : -1) >= nextExpectedSID) console.warn(`DEBUG WARNING - ONLY CHECKING SID WOULD HAVE EXITED LOOP WHILE BUTTON STILL EXISTS (${currentURL})`);
+                        console.debug(`DEBUG - Clicking ${buttonName} Button [text="${thisElementText.split('\n')[(thisElementText.startsWith('✚\n') ? 1 : 0)]}", value="${await thisElement.getAttribute('value')}"] (${buttonClickCount + 1}) - URL=${currentURL}`);
+                        if (currentURL != nextExpectedURL) console.warn(`DEBUG WARNING - ONLY CHECKING URL WOULD HAVE EXITED LOOP WHILE BUTTON STILL EXISTS (${currentURL})`);
                     }
                     
                     try {
-                        if (clickMethod == clickMethodJS) {
-                            await webDriver.executeScript('arguments[0].click()', thisElement); // If neither Selenium click() nor sendKeys(Key.ENTER) works for this button.
-                        } else if (clickMethod == clickMethodEnter) {
-                            await thisElement.sendKeys(Key.ENTER); // If Selenium click() doesn't work for this button.
-                        } else {
-                            await thisElement.click();
-                        }
-
+                        await thisElement.click();
                         buttonClickCount ++;
                     } catch (innerClickButtonError) {
-                        // Ignore likely stale element error and keep looping.
+                        if (innerClickButtonError.name == 'ElementNotInteractableError') buttonClickCount ++; // Still increment click count if button is disabled to not infinite loop.
+                        // Otherwise, ignore likely stale element error and keep looping.
                     }
                 } else {
                     buttonClickCount ++;
@@ -1737,7 +1678,7 @@ async function click_button_until_sid_incremented(buttonName, buttonLocatedBy, c
         } catch (outerClickButtonError) {
             buttonNoLongerExistsCount ++;
 
-            if (debugLogging) console.debug(`DEBUG - BUTTON NO LONGER EXISTS (${buttonNoLongerExistsCount}) - SID=${parseInt(currentURL.split('sid=')[1])}`);
+            if (debugLogging) console.debug(`DEBUG - BUTTON NO LONGER EXISTS (${buttonNoLongerExistsCount}) - URL=${currentURL}`);
 
             if (buttonNoLongerExistsCount >= maxIterationsWithIncorrectUrlAfterButtonNoLongerExists) {
                 if (debugLogging) console.warn('DEBUG WARNING - BUTTON HAS NOT EXISTED FOR TOO LONG WITHOUT URL GETTING UPDATED - EXITING STUCK LOOP');
@@ -1775,7 +1716,7 @@ async function check_for_server_error_page() {
         
         try {
             await webDriver.wait(
-                until.elementLocated(By.tagName('h1')), shortWaitForElementTime
+                until.elementLocated(By.css('h1')), shortWaitForElementTime
             ).then(async thisElement => {
                 try {
                     serverErrorTitle = await thisElement.getText();
