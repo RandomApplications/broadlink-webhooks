@@ -20,7 +20,7 @@ const {exec, execSync, spawnSync} = require('child_process');
 // Adjustable Settings (but should not need to be adjusted unless something isn't working properly):
 const debugLogging = false;
 
-const defaultBrowserWindowSize = {width: 690, height: 1000}; // Only used for Firefox and Chrome when not Headless (Safari window is not resizable).
+const defaultBrowserWindowSize = {width: 690, height: 1000}; // Only used for Firefox and Chrome when not Headless.
 
 const maxTaskAttempts = 3; // Number of times tasks will be attempted if they fail, such as logging in, retrieving Webhooks key, retrieving devices and scenes, and setting up an Applet, etc.
 
@@ -37,8 +37,8 @@ const maxIterationsOnPageAfterButtonNoLongerExists = 100;
 
 // Values for tasks:
 const taskCreateApplets = 'Create Webhooks Applets';
-const taskDeleteAppletsNotInBroadLink = 'Delete Webhooks Applets Not in BroadLink';
-const taskDeleteApplets = 'Delete Webhooks Applets';
+const taskArchiveAppletsNotInBroadLink = 'Archive Webhooks Applets Not in BroadLink';
+const taskArchiveApplets = 'Archive Webhooks Applets';
 const taskOutputSummary = 'Output Summary';
 const taskGenerateHomebridgeIFTTTconfig = 'Generate homebridge-ifttt Configuration';
 const taskGenerateHomebridgeHTTPconfig = 'Generate homebridge-http-switch Configuration';
@@ -90,13 +90,6 @@ let browserToAutomate = null;
                 {title: 'Quit', value: optionQuit}
             ];
 
-            if (process.platform == 'darwin') {
-                browserPromptChoices.splice((browserPromptChoices.length - 1), 0,
-                    {title: 'Safari (Visible Window)', value: 'safari'},
-                    {title: '–', value: 'browserSpacer3', disabled: true}
-                );
-            }
-
             let initialBrowserChoiceSelection = 0;
             if (browserToAutomate) {
                 for (let thisBrowserChoiceIndex = 0; thisBrowserChoiceIndex < browserPromptChoices.length; thisBrowserChoiceIndex ++) {
@@ -122,14 +115,14 @@ let browserToAutomate = null;
                     message: 'Choose a Task:',
                     choices: [
                         {title: 'Create Webhooks Applets', description: 'No duplicates will be created for identical Webhooks Applets already created by "broadlink-webhooks".', value: taskCreateApplets},
-                        {title: 'Delete Webhooks Applets for Renamed or Deleted Devices/Scenes in BroadLink', description: 'For renamed devices/scenes, you can re-run the "Create Webhooks Applets" task after this task is finished.', value: taskDeleteAppletsNotInBroadLink},
-                        {title: 'Delete All Webhooks Applets Created by "broadlink-webhooks"', description: 'If you ever want the Webhooks Applets back after removing them, you can re-run the "Create Webhooks Applets" task at any time.', value: taskDeleteApplets},
+                        {title: 'Archive Webhooks Applets for Renamed or Deleted Devices/Scenes in BroadLink', description: 'For renamed devices/scenes, you can re-run the "Create Webhooks Applets" task after this task is finished.', value: taskArchiveAppletsNotInBroadLink},
+                        {title: 'Archive All Webhooks Applets Created by "broadlink-webhooks"', description: 'If you ever want the Webhooks Applets back after removing them, you can re-run the "Create Webhooks Applets" task at any time.', value: taskArchiveApplets},
                         {title: '–', value: 'taskSpacer1', disabled: true},
                         {title: 'Output Summary of Webhooks Applets Created by "broadlink-webhooks" and Devices/Scenes in BroadLink', value: taskOutputSummary},
                         {title: 'Generate "homebridge-ifttt" Configuration for Webhooks Applets Created by "broadlink-webhooks"', description: 'Useful only if you use Homebridge. Visit homebridge.io to learn more.', value: taskGenerateHomebridgeIFTTTconfig},
                         {title: 'Generate "homebridge-http-switch" Configuration for Webhooks Applets Created by "broadlink-webhooks"', description: 'Useful only if you use Homebridge and want more customization options than homebridge-ifttt. Visit homebridge.io to learn more.', value: taskGenerateHomebridgeHTTPconfig},
                         {title: 'Generate JSON Details of Webhooks Applets Created by "broadlink-webhooks"', description: 'Useful for your own custom scripts.', value: taskGenerateJSON},
-                        {title: 'Open All IFTTT Edit URLs for Webhooks Applets Created by "broadlink-webhooks"', description: 'Edit Applet URLs will open in your default web browser. You should be signed in to IFTTT in your default web browser before running this task.', value: taskOpenEditAppletURLs},
+                        {title: 'Open All IFTTT Edit URLs for Webhooks Applets Created by "broadlink-webhooks"', description: 'Edit Applet URLs will open in your default web browser. You should be logged in to IFTTT in your default web browser before running this task.', value: taskOpenEditAppletURLs},
                         {title: taskOpenGitHubPage, description: 'To learn more, ask questions, make suggestions, and report issues.', value: taskOpenGitHubPage},
                         {title: '–', value: 'taskSpacer2', disabled: true},
                         {title: 'Change Web Browser Selection', value: optionChange},
@@ -141,8 +134,8 @@ let browserToAutomate = null;
                     name: 'groupSelection',
                     message: prev => `Which BroadLink group would you like to ${
                         ((prev == taskCreateApplets) ? 'create Webhooks Applets for' :
-                            ((prev == taskDeleteAppletsNotInBroadLink) ? 'delete Webhooks Applets for which have been renamed or deleted in BroadLink' :
-                                ((prev == taskDeleteApplets) ? 'delete all Webhooks Applets for' :
+                            ((prev == taskArchiveAppletsNotInBroadLink) ? 'archive Webhooks Applets for which have been renamed or deleted in BroadLink' :
+                                ((prev == taskArchiveApplets) ? 'archive all Webhooks Applets for' :
                                     ((prev == taskOutputSummary) ? 'output summary for' :
                                         ((prev == taskGenerateHomebridgeIFTTTconfig) ? 'generate "homebridge-ifttt" configuration for' :
                                             ((prev == taskGenerateHomebridgeHTTPconfig) ? 'generate "homebridge-http-switch" configuration for' :
@@ -205,77 +198,84 @@ let browserToAutomate = null;
             }
 
             let needNewWebDriver = true;
-            let iftttSignInURL = 'https://ifttt.com/login?wp_=1';
+            let iftttLogInURL = 'https://ifttt.com/login?wp_=1';
 
             try {
-                await webDriver.getCurrentUrl(); // If getCurrentUrl() fails, then WebDriver was not built yet, was quit(), or the window was probably closed, so we'll make a new one and sign in.
+                await webDriver.getCurrentUrl(); // If getCurrentUrl() fails, then WebDriver was not built yet, was quit(), or the window was probably closed, so we'll make a new one and log in.
                 
                 needNewWebDriver = false;
                 
-                await webDriver.get(iftttSignInURL);
+                await webDriver.get(iftttLogInURL);
+                
+                try {
+                    await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
+                    if (debugLogging) console.debug('DEBUG - Accepted Leave Page Confirmation');
+                } catch (acceptLeavePageAlertError) {
+                    // Ignore any error if there is no Leave Page confirmation.
+                }
 
-                if ((await webDriver.getCurrentUrl()) == iftttSignInURL) throw 'NEED TO RE-SIGN IN';
-            } catch (checkForSignInError) {
-                let signInMethodPromptResponse = await prompts([
+                if ((await webDriver.getCurrentUrl()) == iftttLogInURL) throw 'NEED TO RE-LOG IN';
+            } catch (checkForLogInError) {
+                let logInMethodPromptResponse = await prompts([
                     {
                         type: 'select',
-                        name: 'signInMethod',
-                        message: 'Choose Sign In Method:',
+                        name: 'logInMethod',
+                        message: 'Choose Log In Method:',
                         choices: [
-                            {title: 'Sign In via Command Line', description: 'Only regular IFTTT accounts are supported when signing in via command line.', value: 'signInViaCLI'},
-                            {title: 'Sign In Manually via Web Browser', description: 'To sign in to IFTTT with a linked Apple, Google, or Facebook account, you must choose this option.', value: 'signInManuallyViaWebBrowser'},
-                            {title: '–', value: 'signInMethodSpacer1', disabled: true},
+                            {title: 'Log In via Command Line', description: 'Only regular IFTTT accounts are supported when logging in via command line.', value: 'logInViaCLI'},
+                            {title: 'Log In Manually via Web Browser', description: 'To log in to IFTTT with a linked Apple, Google, or Facebook account, you must choose this option.', value: 'logInManuallyViaWebBrowser'},
+                            {title: '–', value: 'logInMethodSpacer1', disabled: true},
                             {title: 'Change Web Browser and Task Selection', value: optionChange},
                             {title: 'Quit', value: optionQuit}
                         ],
-                        initial: ((lastIFTTTusernameUsed == 'signedInManuallyViaWebBrowser') ? 1 : 0)
+                        initial: ((lastIFTTTusernameUsed == 'loggedInManuallyViaWebBrowser') ? 1 : 0)
                     }
                 ]);
 
-                let signInMethodPromptResponseValues = Object.values(signInMethodPromptResponse);
+                let logInMethodPromptResponseValues = Object.values(logInMethodPromptResponse);
 
-                if (signInMethodPromptResponseValues.length < 1) {
-                    throw 'CANCELED IFTTT SIGN IN';
-                } else if (signInMethodPromptResponseValues.includes(optionChange)) {
+                if (logInMethodPromptResponseValues.length < 1) {
+                    throw 'CANCELED IFTTT LOG IN';
+                } else if (logInMethodPromptResponseValues.includes(optionChange)) {
                     console.log(''); // Just for a line break before re-displaying options prompt.
                     continue;
-                } else if (signInMethodPromptResponseValues.includes(optionQuit)) {
+                } else if (logInMethodPromptResponseValues.includes(optionQuit)) {
                     throw 'USER QUIT';
                 }
 
-                let signInViaCLI = (signInMethodPromptResponse.signInMethod == 'signInViaCLI');
+                let logInViaCLI = (logInMethodPromptResponse.logInMethod == 'logInViaCLI');
                 
-                if (!signInViaCLI && (browserToAutomate.endsWith('-headless') || (browserToAutomate == 'safari'))) {
-                    console.info('\nSIGNING IN MANUALLY VIA WEB BROWSER IS ONLY SUPPORTED WHEN AUTOMATING FIREFOX OR CHROME WITH A VISIBLE WINDOW\n');
+                if (!logInViaCLI && (browserToAutomate.endsWith('-headless'))) {
+                    console.info('\nLOGGING IN MANUALLY VIA WEB BROWSER IS ONLY SUPPORTED WHEN AUTOMATING FIREFOX OR CHROME WITH A VISIBLE WINDOW\n');
                     
                     let changeBrowserPromptResponse = await prompts([
                         {
                             type: 'select',
                             name: 'newBrowserSelection',
-                            message: 'Change Web Browser to Automate (to Sign In Manually via Web Browser):',
+                            message: 'Change Web Browser to Automate (to Log In Manually via Web Browser):',
                             choices: [
                                 {title: 'Firefox (Visible Window)', value: 'firefox'},
                                 {title: 'Chrome (Visible Window)', value: 'chrome'},
                                 {title: '–', value: 'changeBrowserSpacer1', disabled: true},
-                                {title: 'Sign In via Command Line Instead', description: 'Only regular IFTTT accounts are supported when signing in via command line.', value: 'signInViaCLI'},
+                                {title: 'Log In via Command Line Instead', description: 'Only regular IFTTT accounts are supported when logging in via command line.', value: 'logInViaCLI'},
                                 {title: '–', value: 'changeBrowserSpacer2', disabled: true},
                                 {title: 'Quit', value: optionQuit}
                             ],
-                            initial: ((browserToAutomate == 'chrome-headless') ? 1 : ((browserToAutomate == 'safari') ? 3 : 0))
+                            initial: ((browserToAutomate == 'chrome-headless') ? 1 : 0)
                         }
                     ]);
 
                     let changeBrowserPromptResponseValues = Object.values(changeBrowserPromptResponse);
 
                     if (changeBrowserPromptResponseValues.length < 1) {
-                        throw 'CANCELED IFTTT SIGN IN';
+                        throw 'CANCELED IFTTT LOG IN';
                     } else if (changeBrowserPromptResponseValues.includes(optionQuit)) {
                         throw 'USER QUIT';
                     }
 
-                    signInViaCLI = (changeBrowserPromptResponse.newBrowserSelection == 'signInViaCLI');
+                    logInViaCLI = (changeBrowserPromptResponse.newBrowserSelection == 'logInViaCLI');
                     
-                    if (!signInViaCLI) {
+                    if (!logInViaCLI) {
                         browserToAutomate = changeBrowserPromptResponse.newBrowserSelection;
                         lastBrowserToAutomate = browserToAutomate;
 
@@ -283,12 +283,12 @@ let browserToAutomate = null;
                     }
                 }
 
-                let signInPrompts = [
+                let logInPrompts = [
                     {
                         type: 'text',
                         name: 'iftttUsername',
                         message: 'IFTTT Username:',
-                        initial: ((lastIFTTTusernameUsed != 'signedInManuallyViaWebBrowser') ? lastIFTTTusernameUsed : null),
+                        initial: ((lastIFTTTusernameUsed != 'loggedInManuallyViaWebBrowser') ? lastIFTTTusernameUsed : null),
                         validate: iftttUsername => ((iftttUsername == '') ? 'IFTTT Username Required' : true)
                     },
                     {
@@ -300,12 +300,12 @@ let browserToAutomate = null;
                     }
                 ];
 
-                let signInPromptsResponse = null;
+                let logInPromptsResponse = null;
                 
-                if (signInViaCLI) {
-                    console.log(''); // Just for a line break before sign in prompts.
-                    signInPromptsResponse = await prompts(signInPrompts);
-                    if (Object.keys(signInPromptsResponse).length < 2) throw 'CANCELED IFTTT SIGN IN';
+                if (logInViaCLI) {
+                    console.log(''); // Just for a line break before log in prompts.
+                    logInPromptsResponse = await prompts(logInPrompts);
+                    if (Object.keys(logInPromptsResponse).length < 2) throw 'CANCELED IFTTT LOG IN';
                 }
 
                 if (needNewWebDriver) {
@@ -356,25 +356,33 @@ let browserToAutomate = null;
                         (browserShouldBeHeadless ?
                             new seleniumChromeOptions().headless().windowSize(defaultBrowserWindowSize) :
                             new seleniumChromeOptions().windowSize(defaultBrowserWindowSize)
-                        )
+                        ).excludeSwitches('enable-logging') // Disable excessive logging with Chrome on Windows.
                     ).build();
                 }
 
-                if (signInViaCLI) {
-                    for (let signInAttemptCount = 1; signInAttemptCount <= maxTaskAttempts; signInAttemptCount ++) {
+                if (logInViaCLI) {
+                    for (let logInAttemptCount = 1; logInAttemptCount <= maxTaskAttempts; logInAttemptCount ++) {
                         try {
-                            await webDriver.get(iftttSignInURL);
+                            await webDriver.get(iftttLogInURL);
+                            
+                            try {
+                                await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
+                                if (debugLogging) console.debug('DEBUG - Accepted Leave Page Confirmation');
+                            } catch (acceptLeavePageAlertError) {
+                                // Ignore any error if there is no Leave Page confirmation.
+                            }
+
                             await check_for_server_error_page();
 
                             try {
-                                await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Sign in"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
+                                await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Log in"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
                             
                                 await webDriver.wait(
                                     until.elementLocated(By.id('user_username')), shortWaitForElementTime
                                 ).then(async thisElement => {
                                     if (debugLogging) console.debug('DEBUG - Entering IFTTT Username');
                                     await thisElement.clear();
-                                    await thisElement.sendKeys(signInPromptsResponse.iftttUsername);
+                                    await thisElement.sendKeys(logInPromptsResponse.iftttUsername);
                                 });
         
                                 await webDriver.wait(
@@ -382,32 +390,32 @@ let browserToAutomate = null;
                                 ).then(async thisElement => {
                                     if (debugLogging) console.debug('DEBUG - Entering IFTTT Password');
                                     await thisElement.clear();
-                                    await thisElement.sendKeys(signInPromptsResponse.iftttPassword);
+                                    await thisElement.sendKeys(logInPromptsResponse.iftttPassword);
                                 });
-                            } catch (fillSignInPageError) {
-                                // Allow sign-in page to error in case the user already signed in and submitted in the web browser.
+                            } catch (fillLogInPageError) {
+                                // Allow login page to error in case the user already logged in and submitted in the web browser.
                             }
 
                             let currentURL = await webDriver.getCurrentUrl();
                             
                             // IFTTT will first redirect to "https://ifttt.com/session" and then finally to "https://ifttt.com/home" after successfully logging in.
                             while (currentURL != 'https://ifttt.com/home') {
-                                if (currentURL == iftttSignInURL) {
+                                if (currentURL == iftttLogInURL) {
                                     try {
                                         await webDriver.wait(
-                                            until.elementLocated(By.xpath('//input[@value="Sign in" or @value="Signing in..."]')), shortWaitForElementTime
+                                            until.elementLocated(By.xpath('//input[@value="Log in" or @value="Signing in..."]')), shortWaitForElementTime
                                         ).then(async thisElement => {
-                                            if (debugLogging) console.debug('DEBUG - Clicking Sign In Button');
+                                            if (debugLogging) console.debug('DEBUG - Clicking Log In Button');
                                             try {
                                                 await thisElement.click();
-                                            } catch (innerClickSignInButtonError) {
+                                            } catch (innerClickLogInButtonError) {
                                                 // Ignore likely stale element error and keep looping.
                                             }
                                         });
-                                    } catch (outerClickSignInButtonError) {
+                                    } catch (outerClickLogInButtonError) {
                                         // Ignore likely error from element not existing and keep looping.
                                     }
-                                } else if (currentURL.startsWith('https://ifttt.com/session/new?email=')) {
+                                } else if (currentURL.startsWith('https://ifttt.com/login?email=')) {
                                     throw 'INCORRECT IFTTT USERNAME OR PASSWORD';
                                 } else if (currentURL == 'https://ifttt.com/session') {
                                     try {
@@ -433,9 +441,9 @@ let browserToAutomate = null;
                                         });
 
                                         await webDriver.wait(
-                                            until.elementLocated(By.xpath('//input[@value="Sign in" or @value="Signing in..."]')), shortWaitForElementTime
+                                            until.elementLocated(By.xpath('//input[@value="Log in" or @value="Signing in..."]')), shortWaitForElementTime
                                         ).then(async thisElement => {
-                                            if (debugLogging) console.debug('DEBUG - Clicking Two-Step Sign In Button');
+                                            if (debugLogging) console.debug('DEBUG - Clicking Two-Step Log In Button');
                                             try {
                                                 await thisElement.click();
                                             } catch (innerIftttTwoStepVerificationError) {
@@ -452,8 +460,8 @@ let browserToAutomate = null;
                             }
 
                             break;
-                        } catch (signInError) {
-                            console.error(`\nERROR: ${signInError}`);
+                        } catch (logInError) {
+                            console.error(`\nERROR: ${logInError}`);
                             if (debugLogging) {
                                 try {
                                     console.debug(`URL=${await webDriver.getCurrentUrl()}`);
@@ -461,48 +469,56 @@ let browserToAutomate = null;
                                     console.debug('FAILED TO GET CURRENT URL');
                                 }
                             }
-                            console.error(`\n\nERROR SIGNING IN TO IFTTT - ATTEMPT ${signInAttemptCount} OF ${maxTaskAttempts}\n\n`);
+                            console.error(`\n\nERROR LOGGING IN TO IFTTT - ATTEMPT ${logInAttemptCount} OF ${maxTaskAttempts}\n\n`);
                             
-                            if (signInAttemptCount == maxTaskAttempts) {
-                                throw signInError;
+                            if (logInAttemptCount == maxTaskAttempts) {
+                                throw logInError;
                             } else {
-                                if (signInError.toString().includes('INCORRECT IFTTT USERNAME OR PASSWORD')) {
-                                    signInPrompts[0].initial = signInPromptsResponse.iftttUsername;
-                                    signInPromptsResponse = await prompts(signInPrompts);
-                                    if (Object.keys(signInPromptsResponse).length < 2) throw 'CANCELED IFTTT SIGN IN';
+                                if (logInError.toString().includes('INCORRECT IFTTT USERNAME OR PASSWORD')) {
+                                    logInPrompts[0].initial = logInPromptsResponse.iftttUsername;
+                                    logInPromptsResponse = await prompts(logInPrompts);
+                                    if (Object.keys(logInPromptsResponse).length < 2) throw 'CANCELED IFTTT LOG IN';
                                 }
                             }
                         }
                     }
 
-                    lastIFTTTusernameUsed = signInPromptsResponse.iftttUsername;
-                    lastIFTTTpasswordUsed = signInPromptsResponse.iftttPassword;
+                    lastIFTTTusernameUsed = logInPromptsResponse.iftttUsername;
+                    lastIFTTTpasswordUsed = logInPromptsResponse.iftttPassword;
                 } else {
                     for ( ; ; ) {
                         try {
-                            await webDriver.get(iftttSignInURL);
+                            await webDriver.get(iftttLogInURL);
+
+                            try {
+                                await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
+                                if (debugLogging) console.debug('DEBUG - Accepted Leave Page Confirmation');
+                            } catch (acceptLeavePageAlertError) {
+                                // Ignore any error if there is no Leave Page confirmation.
+                            }
+
                             let currentURL = await webDriver.getCurrentUrl();
 
                             if (currentURL == 'https://ifttt.com/home') {
-                                lastIFTTTusernameUsed = 'signedInManuallyViaWebBrowser';
+                                lastIFTTTusernameUsed = 'loggedInManuallyViaWebBrowser';
                                 lastIFTTTpasswordUsed = null;
 
                                 break;
                             } else {
-                                throw 'NEED TO SIGN IN';
+                                throw 'NEED TO LOG IN';
                             }
-                        } catch (checkForSignInError) {
-                            console.log(''); // Just for a line break before confirm sign in prompt.
-                            let confirmSignedInManuallyViaWebBrowserPromptResponse = await prompts({
+                        } catch (checkForLogInError) {
+                            console.log(''); // Just for a line break before confirm log in prompt.
+                            let confirmLoggedInManuallyViaWebBrowserPromptResponse = await prompts({
                                 type: 'toggle',
-                                name: 'confirmSignIn',
-                                message: 'Confirm After Signing In Manually via Web Browser:',
+                                name: 'confirmLogIn',
+                                message: 'Confirm After Logging In Manually via Web Browser:',
                                 initial: true,
-                                active: 'Confirm Sign In',
+                                active: 'Confirm Log In',
                                 inactive: 'Quit'
                             });
 
-                            if ((Object.keys(confirmSignedInManuallyViaWebBrowserPromptResponse).length == 0) || (confirmSignedInManuallyViaWebBrowserPromptResponse.confirmSignIn == false)) {
+                            if ((Object.keys(confirmLoggedInManuallyViaWebBrowserPromptResponse).length == 0) || (confirmLoggedInManuallyViaWebBrowserPromptResponse.confirmLogIn == false)) {
                                 throw 'USER QUIT';
                             }
                         }
@@ -520,6 +536,14 @@ let browserToAutomate = null;
                 for (let retrieveWebhooksKeyAttemptCount = 1; retrieveWebhooksKeyAttemptCount <= maxTaskAttempts; retrieveWebhooksKeyAttemptCount ++) {
                     try {
                         await webDriver.get('https://ifttt.com/maker_webhooks/settings');
+                        
+                        try {
+                            await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
+                            if (debugLogging) console.debug('DEBUG - Accepted Leave Page Confirmation');
+                        } catch (acceptLeavePageAlertError) {
+                            // Ignore any error if there is no Leave Page confirmation.
+                        }
+
                         await check_for_server_error_page();
 
                         if ((await webDriver.getCurrentUrl()) == 'https://ifttt.com/maker_webhooks') {
@@ -587,14 +611,34 @@ let browserToAutomate = null;
                     existingWebhooksBroadLinkAppletIDsAndNames = {};
                     
                     await webDriver.get('https://ifttt.com/broadlink');
+                    
+                    try {
+                        await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
+                        if (debugLogging) console.debug('DEBUG - Accepted Leave Page Confirmation');
+                    } catch (acceptLeavePageAlertError) {
+                        // Ignore any error if there is no Leave Page confirmation.
+                    }
+
                     await check_for_server_error_page();
 
-                    // First, wait a long time for applets to exist within the "discover_services" section (which should always exist) or the "my_services" section (which will only exist if personal Applets exist) because one will always exist no matter what.
-                    // Note: Need to wait for "my-web-applet-card" because the "discover_services" section will exist early with an empty "web-applet-cards" list while the page contents are still loading with a spinner displayed.
-                    await webDriver.wait(until.elementsLocated(By.xpath('//section[@class="discover_services" or @class="my_services"]/ul[@class="web-applet-cards"]/li[contains(@class,"my-web-applet-card")]')), longWaitForElementTime);
+                    // First, wait a long time for community Applets to exist within the "discover_services" section, which will always exist.
+                    await webDriver.wait(until.elementsLocated(By.xpath('//section[@class="discover_services"]/ul[@class="web-applet-cards"]/li[contains(@class,"my-web-applet-card")]')), longWaitForElementTime);
 
-                    // Next, once we know the page is loaded, wait a short time to get the "my_services" Applet titles (so that it will fail quickly if none exist).
                     try {
+                        // Then, wait a short time for the "My Applets" button to exist and click it to switch to the "My Applets" section.
+                        // If no personal Applets exist, this link will not exist and we want to fail quickly in this case (which is why we wait a short time).
+                        // Clicking this will set the URL to "https://ifttt.com/broadlink/my_applets" but annoyingly that URL cannot be visited directly (it 404s).
+                        await webDriver.wait(
+                            until.elementLocated(By.xpath('//div[contains(@class,"discover_service_view")]/span[text()="My Applets"]')), shortWaitForElementTime
+                        ).then(async thisElement => {
+                            if (debugLogging) console.debug('DEBUG - Clicking My Applets Button');
+                            await thisElement.click();
+                        });
+
+                        // Finally, wait a long time for personal Applets to exist within the "my_services" section (even though they should already be loaded from the first page load) which was revealed by switching to the "My Applets" section.
+                        await webDriver.wait(until.elementsLocated(By.xpath('//section[@class="my_services"]/ul[@class="web-applet-cards"]/li[contains(@class,"my-web-applet-card")]')), longWaitForElementTime);
+
+                        // Next, once we know the page is fully loaded, wait a short time to get the "my_services" Applet titles (so that it will fail quickly if none exist, even though we should have already failed since the "My Applets" button wouldn't exist).
                         await webDriver.wait(
                             until.elementsLocated(By.xpath('//section[@class="my_services"]/ul[@class="web-applet-cards"]/li[contains(@class,"my-web-applet-card")]/a[contains(@class,"applet-card-body")]')), shortWaitForElementTime
                         ).then(async theseElements => {
@@ -701,7 +745,7 @@ let browserToAutomate = null;
             let currentBroadLinkDeviceNamesArray = [];
             let currentBroadLinkSceneNamesArray = [];
 
-            if ((optionsPromptsResponse.taskSelection == taskCreateApplets) || (optionsPromptsResponse.taskSelection == taskDeleteAppletsNotInBroadLink) || (optionsPromptsResponse.taskSelection == taskOutputSummary)) {
+            if ((optionsPromptsResponse.taskSelection == taskCreateApplets) || (optionsPromptsResponse.taskSelection == taskArchiveAppletsNotInBroadLink) || (optionsPromptsResponse.taskSelection == taskOutputSummary)) {
                 for (let retrieveDevicesAndScenesAttemptCount = 1; retrieveDevicesAndScenesAttemptCount <= maxTaskAttempts; retrieveDevicesAndScenesAttemptCount ++) {
                     try {
                         await setup_ifttt_webhooks_broadlink_applet('FakeEventName-ToRetrieveRealDeviceAndSceneNames', (optionsPromptsResponse.groupSelection == groupScenesOnly));
@@ -720,7 +764,7 @@ let browserToAutomate = null;
                                 }
                             });
 
-                            if ((currentBroadLinkDeviceNamesArray.length == 1) && (currentBroadLinkDeviceNamesArray[0] == 'Options Unavailable')) currentBroadLinkDeviceNamesArray = [];
+                            if ((currentBroadLinkDeviceNamesArray.length == 1) && (currentBroadLinkDeviceNamesArray[0] == 'No options available')) currentBroadLinkDeviceNamesArray = [];
                             if (currentBroadLinkDeviceNamesArray.length > 1) {
                                 currentBroadLinkDeviceNamesArray.sort(function(thisDeviceName, thatDeviceName) {
                                     return thisDeviceName.localeCompare(thatDeviceName);
@@ -735,11 +779,7 @@ let browserToAutomate = null;
                                     until.elementLocated(By.xpath('//a[@title="Back"]')), longWaitForElementTime
                                 ).then(async thisElement => {
                                     if (debugLogging) console.debug('DEBUG - Clicking Back Button');
-                                    if (browserToAutomate == 'safari') {
-                                        await webDriver.executeScript('arguments[0].click()', thisElement); // Neither Selenium click() nor sendKeys(Key.ENTER) works for this button in Safari.
-                                    } else {
-                                        await thisElement.click();
-                                    }
+                                    await thisElement.click();
                                 });
                                 
                                 await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Choose an action"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
@@ -772,7 +812,7 @@ let browserToAutomate = null;
                                 }
                             });
                         
-                            if ((currentBroadLinkSceneNamesArray.length == 1) && (currentBroadLinkSceneNamesArray[0] == 'Options Unavailable')) currentBroadLinkSceneNamesArray = [];
+                            if ((currentBroadLinkSceneNamesArray.length == 1) && (currentBroadLinkSceneNamesArray[0] == 'No options available')) currentBroadLinkSceneNamesArray = [];
                             if (currentBroadLinkSceneNamesArray.length > 1) {
                                 currentBroadLinkSceneNamesArray.sort(function(thisSceneName, thatSceneName) {
                                     return thisSceneName.localeCompare(thatSceneName);
@@ -929,11 +969,7 @@ let browserToAutomate = null;
                                             until.elementLocated(By.xpath('//button[text()="Finish"]')), longWaitForElementTime
                                         ).then(async thisElement => {
                                             if (debugLogging) console.debug('DEBUG - Clicking Finish Applet Button');
-                                            if (browserToAutomate == 'safari') {
-                                                await thisElement.sendKeys(Key.ENTER); // Selenium click() doesn't work for this button in Safari.
-                                            } else {
-                                                await thisElement.click();
-                                            }
+                                            await thisElement.click();
                                         });
                                         
                                         // But, do keep checking for the "Finish" buttons existance while waiting for the correct URL so we can exit this loop if it's been too long.
@@ -1036,7 +1072,7 @@ let browserToAutomate = null;
                         }
                     }
                 }
-            } else if ((optionsPromptsResponse.taskSelection == taskDeleteApplets) || (optionsPromptsResponse.taskSelection == taskDeleteAppletsNotInBroadLink) || (optionsPromptsResponse.taskSelection == taskOpenEditAppletURLs)) {
+            } else if ((optionsPromptsResponse.taskSelection == taskArchiveApplets) || (optionsPromptsResponse.taskSelection == taskArchiveAppletsNotInBroadLink) || (optionsPromptsResponse.taskSelection == taskOpenEditAppletURLs)) {
                 let thisAppletIndex = 0;
 
                 for (let thisAppletID in existingWebhooksBroadLinkAppletIDsAndNames) {
@@ -1048,9 +1084,9 @@ let browserToAutomate = null;
                         
                         thisAppletIndex ++;
                         
-                        let thisEditAppletURL = `https://ifttt.com/applets/${thisAppletID}/edit`;
-                        
                         if (optionsPromptsResponse.taskSelection == taskOpenEditAppletURLs) {
+                            let thisEditAppletURL = `https://ifttt.com/applets/${thisAppletID}/edit`;
+                            
                             try {
                                 exec(`${((process.platform == 'darwin') ? 'open' : ((process.platform == 'win32') ? 'start' : 'xdg-open'))} ${thisEditAppletURL}`);
                                 console.info(`${thisAppletIndex} - Opening Edit Webhooks Applet for ${isScene ? 'Scene' : 'Device'} URL: ${thisEditAppletURL} (${thisAppletName})`);
@@ -1059,62 +1095,68 @@ let browserToAutomate = null;
                                 console.error(`ERROR: ${openEditAppletURLerror}\n`);
                             }
                         } else {
-                            if (optionsPromptsResponse.taskSelection == taskDeleteAppletsNotInBroadLink) {
+                            if (optionsPromptsResponse.taskSelection == taskArchiveAppletsNotInBroadLink) {
                                 let thisDeviceOrSceneName = thisAppletName.split('+')[1].replace(/_/g, ' ');
                                 
                                 if ((!isScene && currentBroadLinkDeviceNamesArray.includes(thisDeviceOrSceneName)) || (isScene && currentBroadLinkSceneNamesArray.includes(thisDeviceOrSceneName))) {
-                                    console.info(`${thisAppletIndex} - Not Deleting Webhooks Applet for ${isScene ? 'Scene' : 'Device'} - STILL EXISTS IN BROADLINK: ${thisDeviceOrSceneName} (${thisAppletName})`);
+                                    console.info(`${thisAppletIndex} - Not Archiving Webhooks Applet for ${isScene ? 'Scene' : 'Device'} - STILL EXISTS IN BROADLINK: ${thisDeviceOrSceneName} (${thisAppletName})`);
                                     continue;
                                 }
                             }
-
-                            for (let deleteAppletAttemptCount = 1; deleteAppletAttemptCount <= maxTaskAttempts; deleteAppletAttemptCount ++) {
+                            
+                            let thisAppletURL = `https://ifttt.com/applets/${thisAppletID}`;
+                            
+                            for (let archiveAppletAttemptCount = 1; archiveAppletAttemptCount <= maxTaskAttempts; archiveAppletAttemptCount ++) {
                                 try {
-                                    await webDriver.get(thisEditAppletURL);
+                                    await webDriver.get(thisAppletURL);
+                                    
+                                    try {
+                                        await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
+                                        if (debugLogging) console.debug('DEBUG - Accepted Leave Page Confirmation');
+                                    } catch (acceptLeavePageAlertError) {
+                                        // Ignore any error if there is no Leave Page confirmation.
+                                    }
+
                                     await check_for_server_error_page();
                                     
                                     await webDriver.wait(
-                                        until.elementLocated(By.xpath('//input[@value="Save"]|//h1[contains(text(),"The requested page or file does not exist.")]')), longWaitForElementTime
+                                        until.elementLocated(By.xpath(`//h1[text()="${thisAppletName}"]|//h1[text()="Archive"]|//h1[contains(text(),"The requested page or file does not exist.")]`)), longWaitForElementTime
                                     ).then(async thisElement => {
-                                        if ((await thisElement.getAttribute('value')) == 'Save') {
+                                        if ((await thisElement.getText()) == thisAppletName) {
                                             try {
-                                                // Don't wait very long since Save button already exists and Archive button may not exist at all.
-                                                // The Archive button should only not exist when visiting an Edit Applet URL which has already been deleted.
+                                                // Don't wait very long since H1 already exists and Archive button may not exist at all.
+                                                // The Archive button should only not exist when visiting an Edit Applet URL which has already been archived.
                                                 // But, that should not really be possible since this code is getting the Edit Applet URLs from what is currently in IFTTT.
-                                                // This setup it left over from when this code got the Edit Applet URLs from a file, which weren't guaranteed to not already have been deleted.
-                                                // Kept this setup in place to be extra safe, since it could still happen if someone deletes an Applet manually after this delete process was started.
+                                                // This setup is left over from when this code got the Edit Applet URLs from a file, which weren't guaranteed to not already have been archived.
+                                                // Kept this setup in place to be extra safe, since it could still happen if someone archives an Applet manually after this archive process was started.
                                                 await webDriver.wait(
                                                     until.elementLocated(By.linkText('Archive')), shortWaitForElementTime
                                                 ).then(async thatElement => {
-                                                    if (browserToAutomate == 'safari') {
-                                                        await webDriver.executeScript('arguments[0].click()', thatElement); // Neither sendKeys(Key.ENTER) nor Selenium click() works here in Safari.
-                                                    } else {
-                                                        await thatElement.click();
-                                                    }
+                                                    await thatElement.click();
                                                     
                                                     await webDriver.switchTo().alert().accept();
                                                     
                                                     let currentURL = await webDriver.getCurrentUrl();
-                                                    while (currentURL != 'https://ifttt.com/home') {
+                                                    while ((currentURL != 'https://ifttt.com/home') && (currentURL != 'https://ifttt.com')) { // Could end up at either of these URLs after archiving an applet.
                                                         currentURL = await webDriver.getCurrentUrl();
                                                         await webDriver.sleep(waitForNextPageSleepInLoopTime);
                                                     }
                                                     
-                                                    console.info(`${thisAppletIndex} - Deleted Webhooks Applet for ${isScene ? 'Scene' : 'Device'}: ${thisEditAppletURL} (${thisAppletName})`);
+                                                    console.info(`${thisAppletIndex} - Archived Webhooks Applet for ${isScene ? 'Scene' : 'Device'}: ${thisAppletURL} (${thisAppletName})`);
                                                 });
-                                            } catch (noDeleteButtonError) {
-                                                console.info(`${thisAppletIndex} - Webhooks Applet for ${isScene ? 'Scene' : 'Device'} Already Deleted - NO ARCHIVE BUTTON: ${thisEditAppletURL} (${thisAppletName})`);
+                                            } catch (noArchiveButtonError) {
+                                                console.info(`${thisAppletIndex} - Webhooks Applet for ${isScene ? 'Scene' : 'Device'} Already Archived - NO ARCHIVE BUTTON: ${thisAppletURL} (${thisAppletName})`);
                                             }
                                         } else {
-                                            console.info(`${thisAppletIndex} - Webhooks Applet for ${isScene ? 'Scene' : 'Device'} Already Deleted - DOES NOT EXIST: ${thisEditAppletURL} (${thisAppletName})`);
+                                            console.info(`${thisAppletIndex} - Webhooks Applet for ${isScene ? 'Scene' : 'Device'} Already Archived - DOES NOT EXIST: ${thisAppletURL} (${thisAppletName})`);
                                         }
                                     });
                                     
                                     break;
-                                } catch (deleteAppletError) {
-                                    console.error(`${thisAppletIndex} - ERROR DELETING WEBHOOKS APPLET FOR ${isScene ? 'SCENE' : 'DEVICE'}: ${thisEditAppletURL} (${thisAppletName})`);
+                                } catch (archiveAppletError) {
+                                    console.error(`${thisAppletIndex} - ERROR ARCHIVING WEBHOOKS APPLET FOR ${isScene ? 'SCENE' : 'DEVICE'}: ${thisAppletURL} (${thisAppletName})`);
                                     
-                                    console.error(`\nERROR: ${deleteAppletError}`);
+                                    console.error(`\nERROR: ${archiveAppletError}`);
                                     if (debugLogging) {
                                         try {
                                             console.debug(`URL=${await webDriver.getCurrentUrl()}`);
@@ -1122,10 +1164,10 @@ let browserToAutomate = null;
                                             console.debug('FAILED TO GET CURRENT URL');
                                         }
                                     }
-                                    console.error(`\n\nERROR DELETING WEBHOOKS APPLET - ATTEMPT ${deleteAppletAttemptCount} OF ${maxTaskAttempts}\n\n`);
+                                    console.error(`\n\nERROR ARCHIVING WEBHOOKS APPLET - ATTEMPT ${archiveAppletAttemptCount} OF ${maxTaskAttempts}\n\n`);
                                     
-                                    if (deleteAppletAttemptCount == maxTaskAttempts) {
-                                        throw deleteAppletError;
+                                    if (archiveAppletAttemptCount == maxTaskAttempts) {
+                                        throw archiveAppletError;
                                     }
                                 }
                             }
@@ -1405,6 +1447,24 @@ let browserToAutomate = null;
             try {
                 if (!browserToAutomate.endsWith('-headless') && ((await webDriver.getCurrentUrl()) != 'https://ifttt.com/broadlink')) {
                     await webDriver.get('https://ifttt.com/broadlink');
+                    
+                    try {
+                        await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
+                        if (debugLogging) console.debug('DEBUG - Accepted Leave Page Confirmation');
+                    } catch (acceptLeavePageAlertError) {
+                        // Ignore any error if there is no Leave Page confirmation.
+                    }
+
+                    await check_for_server_error_page();
+
+                    await webDriver.wait(until.elementsLocated(By.xpath('//section[@class="discover_services"]/ul[@class="web-applet-cards"]/li[contains(@class,"my-web-applet-card")]')), longWaitForElementTime);
+
+                    await webDriver.wait(
+                        until.elementLocated(By.xpath('//div[contains(@class,"discover_service_view")]/span[text()="My Applets"]')), shortWaitForElementTime
+                    ).then(async thisElement => {
+                        if (debugLogging) console.debug('DEBUG - Clicking My Applets Button');
+                        await thisElement.click();
+                    });
                 }
             } catch (resetToBroadLinkAppletsPageError) {
                 // Ignore any error from trying to load BroadLink Applets
@@ -1484,8 +1544,6 @@ let browserToAutomate = null;
             }
 
             console.log(''); // Just for a line break before the next Terminal prompt.
-        } else if (runtimeError.toString().includes('Develop menu to control Safari via WebDriver')) {
-            console.error(`\n\nERROR: SAFARI WEBDRIVER AUTOMATION IS NOT ENABLED\n\nTo enable Safari WebDriver and allow Safari to be automated by "broadlink-webhooks", you must first make sure the "Develop" menu is enabled in Safari's menubar by turning on the "Show Develop menu in menubar" checkbox option in Safari's Advanced Preferences.\n\nThen, in the "Develop" menu in the Safari's menubar, turn on the "Allow Remote Automation" menu item option.\n\nAfter "Allow Remote Automation" is enabled in Safari's "Develop" menu, you can re-launch "broadlink-webhooks" to automate Safari.\n\n`);
         } else {
             console.error(`\nERROR: ${runtimeError}`);
             console.error('\n\nRUNTIME ERROR OCCURRED - RE-LAUNCH BROADLINK-WEBHOOKS TO TRY AGAIN\n\n');
@@ -1503,6 +1561,14 @@ let browserToAutomate = null;
 
 async function setup_ifttt_webhooks_broadlink_applet(thisWebhooksEventName, isScene) {
     await webDriver.get('https://ifttt.com/create');
+    
+    try {
+        await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
+        if (debugLogging) console.debug('DEBUG - Accepted Leave Page Confirmation');
+    } catch (acceptLeavePageAlertError) {
+        // Ignore any error if there is no Leave Page confirmation.
+    }
+
     await check_for_server_error_page();
 
     await webDriver.wait(until.elementLocated(By.xpath('//h1[text()="Create your own"]')), longWaitForElementTime); // Make sure correct page is loaded before continuing.
