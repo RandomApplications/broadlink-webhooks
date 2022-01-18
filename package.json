@@ -1,6 +1,6 @@
 {
   "name": "broadlink-webhooks",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Create and Manage IFTTT Webhooks Applets for BroadLink (Using Selenium WebDriver)",
   "main": "broadlink-webhooks.js",
   "bin": {
@@ -41,8 +41,8 @@
     "Scene"
   ],
   "dependencies": {
-    "selenium-webdriver": "^4.0.0-beta.4",
-    "prompts": "^2.4.1",
+    "selenium-webdriver": "^4.1.1",
+    "prompts": "^2.4.2",
     "sanitize-filename": "^1.6.3"
   },
   "author": "RandomApplications",

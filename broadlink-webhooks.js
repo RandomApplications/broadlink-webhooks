@@ -205,7 +205,7 @@ let browserToAutomate = null;
                 
                 needNewWebDriver = false;
                 
-                await webDriver.get(iftttLogInURL);
+                await webDriver.get('https://ifttt.com/my_services'); // This URL will forward to https://ifttt.com/join if not logged in.
                 
                 try {
                     await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
@@ -214,7 +214,7 @@ let browserToAutomate = null;
                     // Ignore any error if there is no Leave Page confirmation.
                 }
 
-                if ((await webDriver.getCurrentUrl()) == iftttLogInURL) throw 'NEED TO RE-LOG IN';
+                if ((await webDriver.getCurrentUrl()) == 'https://ifttt.com/join') throw 'NEED TO RE-LOG IN';
             } catch (checkForLogInError) {
                 let logInMethodPromptResponse = await prompts([
                     {
@@ -398,8 +398,7 @@ let browserToAutomate = null;
 
                             let currentURL = await webDriver.getCurrentUrl();
                             
-                            // IFTTT will first redirect to "https://ifttt.com/session" and then finally to "https://ifttt.com/home" after successfully logging in.
-                            while (currentURL != 'https://ifttt.com/home') {
+                            while (currentURL.startsWith('https://ifttt.com/login') || currentURL == 'https://ifttt.com/session') {
                                 if (currentURL == iftttLogInURL) {
                                     try {
                                         await webDriver.wait(
@@ -488,7 +487,7 @@ let browserToAutomate = null;
                 } else {
                     for ( ; ; ) {
                         try {
-                            await webDriver.get(iftttLogInURL);
+                            await webDriver.get('https://ifttt.com/my_services'); // This URL will forward to https://ifttt.com/join if not logged in.
 
                             try {
                                 await webDriver.switchTo().alert().accept(); // There could be a Leave Page confirmation that needs to be accepted on Chrome (but it doesn't hurt to also check on Firefox).
@@ -497,14 +496,13 @@ let browserToAutomate = null;
                                 // Ignore any error if there is no Leave Page confirmation.
                             }
 
-                            let currentURL = await webDriver.getCurrentUrl();
-
-                            if (currentURL == 'https://ifttt.com/home') {
+                            if ((await webDriver.getCurrentUrl()) != 'https://ifttt.com/join') {
                                 lastIFTTTusernameUsed = 'loggedInManuallyViaWebBrowser';
                                 lastIFTTTpasswordUsed = null;
 
                                 break;
                             } else {
+                                await webDriver.get(iftttLogInURL);
                                 throw 'NEED TO LOG IN';
                             }
                         } catch (checkForLogInError) {
@@ -590,6 +588,8 @@ let browserToAutomate = null;
                 
                 console.info(`\nIFTTT Webhooks Key: ${iftttWebhooksKey}`);
             }
+
+            console.info('\nDetecting Existing Webhooks Applets...');
 
             let existingWebhooksBroadLinkAppletIDsAndNames = {};
             let allowedWebhooksBroadLinkAppletNamePrefixes = [];
@@ -746,6 +746,8 @@ let browserToAutomate = null;
             let currentBroadLinkSceneNamesArray = [];
 
             if ((optionsPromptsResponse.taskSelection == taskCreateApplets) || (optionsPromptsResponse.taskSelection == taskArchiveAppletsNotInBroadLink) || (optionsPromptsResponse.taskSelection == taskOutputSummary)) {
+                console.info('\nDetecting BroadLink Devices & Scenes...');
+
                 for (let retrieveDevicesAndScenesAttemptCount = 1; retrieveDevicesAndScenesAttemptCount <= maxTaskAttempts; retrieveDevicesAndScenesAttemptCount ++) {
                     try {
                         await setup_ifttt_webhooks_broadlink_applet('FakeEventName-ToRetrieveRealDeviceAndSceneNames', (optionsPromptsResponse.groupSelection == groupScenesOnly));
@@ -917,19 +919,24 @@ let browserToAutomate = null;
                                     await webDriver.wait(
                                         until.elementLocated(By.xpath('//textarea[@name="description"]')), longWaitForElementTime
                                     ).then(async thisElement => {
-                                        originalAppletTitle = await thisElement.getText();
-                                        
-                                        if (originalAppletTitle != correctOriginalAppletTitle) {
-                                            throw `ORIGINAL APPLET TITLE NOT CORRECT ("${originalAppletTitle}" != "${correctOriginalAppletTitle}")`;
-                                        }
-                                        
-                                        await thisElement.clear();
-                                        await thisElement.sendKeys(Key.ENTER, Key.BACK_SPACE); // Send Enter and then Backspace keys be sure the contents get updated, because the character count doesn't always get updated when only using clear().
-                                        await thisElement.clear(); // clear() again after that to be sure the title field is empty.
-                                        
-                                        await thisElement.sendKeys(desiredAppletTitle);
-                                        
-                                        console.info(`\tOriginal Applet Title: ${originalAppletTitle}`);
+                                        await webDriver.wait(
+                                            until.elementLocated(By.xpath('//textarea[@name="description"]/following-sibling::div')), shortWaitForElementTime
+                                        ).then(async thatElement => {
+                                            // Cannot get the originalAppletTitle from the actual textarea, but can get it from the div right after it.
+                                            originalAppletTitle = (await thatElement.getAttribute('innerHTML')).trim(); // getText() doesn't work here for some reason. (Need to trim since there will be a trailing line break.)
+                                            
+                                            if (originalAppletTitle != correctOriginalAppletTitle) {
+                                                throw `ORIGINAL APPLET TITLE NOT CORRECT ("${originalAppletTitle}" != "${correctOriginalAppletTitle}")`;
+                                            }
+                                            
+                                            await thisElement.clear();
+                                            await thisElement.sendKeys(Key.ENTER, Key.BACK_SPACE); // Send Enter and then Backspace keys be sure the contents get updated, because the character count doesn't always get updated when only using clear().
+                                            await thisElement.clear(); // clear() again after that to be sure the title field is empty.
+                                            
+                                            await thisElement.sendKeys(desiredAppletTitle);
+                                            
+                                            console.info(`\tOriginal Applet Title: ${originalAppletTitle}`);
+                                        });
                                     });
                                      
                                     // Applets notifications are disabled by default now, but still check just in case.
@@ -1007,7 +1014,16 @@ let browserToAutomate = null;
                                     currentURL = await webDriver.getCurrentUrl();
 
                                     if (currentURL.startsWith('https://ifttt.com/applets/')) {
-                                        console.info(`\tEdit Applet URL: ${currentURL}/edit`);
+                                        try {
+                                            await webDriver.wait(
+                                                until.elementLocated(By.xpath('//div[contains(@class,"connection-settings-btn")]/a')), shortWaitForElementTime
+                                            ).then(async thisElement => {
+                                                var thisEditAppletURL = await thisElement.getAttribute('href');
+                                                console.info(`\tEdit Applet URL: ${thisEditAppletURL}`);
+                                            });
+                                        } catch (retrieveEditURLError) {
+                                            console.info(`\tEdit Applet URL: ${currentURL}/edit`);
+                                        }
                                         
                                         let finalAppletTitle = 'FAILED_TO_RETRIEVE_FINAL_APPLET_TITLE';
                                         let failedToRetrieveFinalAppletTitleCount = 0;
@@ -1137,7 +1153,7 @@ let browserToAutomate = null;
                                                     await webDriver.switchTo().alert().accept();
                                                     
                                                     let currentURL = await webDriver.getCurrentUrl();
-                                                    while ((currentURL != 'https://ifttt.com/home') && (currentURL != 'https://ifttt.com')) { // Could end up at either of these URLs after archiving an applet.
+                                                    while ((currentURL != 'https://ifttt.com/explore') && (currentURL != 'https://ifttt.com/')) { // Could end up at either of these URLs after archiving an applet.
                                                         currentURL = await webDriver.getCurrentUrl();
                                                         await webDriver.sleep(waitForNextPageSleepInLoopTime);
                                                     }
